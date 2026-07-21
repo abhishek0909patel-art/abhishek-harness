@@ -1,32 +1,103 @@
-# UI
+# UI — UP Police Data Analyst
 
-> **Boilerplate status:** Delete this file if the agent has no UI. Otherwise, filled in by the spec-writer sub-agent.
+## Layout
 
----
+The analyst surface lives under `/app/analyst`. In Phase 1 it is a self-contained single-page view served either by a FastAPI template or by a proxied Streamlit instance. The description below is framework-agnostic.
 
-## UI Type
+```
++---------------------------------------------------------------+
+| Header: "UP Police Data Analyst"  |  Officer badge: [____]     |
++---------------------------------------------------------------+
+| Left Sidebar (240 px)  |  Main Column (flex-grow)             |
+|                        |                                      |
+| Upload Section         |  Chat / Query Area                   |
+|  [Choose Files]        |  +---------------------------------+ |
+|  .csv accepted         |  | Officer: How many cases by       | |
+|  Max 50 MB each        |  | district last month?             | |
+|                        |  +---------------------------------+ |
+| Loaded Datasets        |  | Agent: 1 240 rows · table + bar  | |
+|  + fir_june_2026.csv   |  | chart · 3.2 s                    | |
+|    schema ▼            |  +---------------------------------+ |
+|    • station (str)    |                                      |
+|    • date (date)      |  [Collapsible] Generated Code        |
+|    • section (str)    |  +---------------------------------+ |
+|    • status (cat)     |  | import pandas as pd              | |
+|                        |  | result = df.groupby('district')  | |
+| Schema Summary         |  |        .size().reset_index()      | |
+|  (compact text)        |  | fig = pl.bar(...)               | |
+|                        |  |                                 | |
+| Quick Actions          |  | [Re-run]                         | |
+|  [Bookmark query]      |  +---------------------------------+ |
+|  [View bookmarks]      |                                      |
+|                        |  Suggestions:                        |
+| Session Audit (📋)     |  +---------------------------------+ |
+|  [expandable list]     |  | Chip: "top 10 stations"          | |
+|  09:14  How many...    |  | Chip: "week-over-week trend"     | |
+|  09:12  describe...    |  +---------------------------------+ |
+|  (read-only)           |                                      |
++---------------------------------------------------------------+
+```
 
-<!-- FILL IN: Web dashboard / CLI / chat interface / none -->
+## Panels
 
-## Views / Screens
+### Left Sidebar
 
-<!-- FILL IN: One section per major view. -->
+- **Upload Section (top):**
+  - "Choose Files" button (`<input type="file" accept=".csv" multiple>`).
+  - Status indicator per file: "Parsing…", "Ready — N rows", or "Failed — reason".
+  - Per-file expander with inferred schema: column name, dtype, and up to three sample values.
+  - Remove button per file (server-side unlink + metadata delete).
 
-### Screen: <!-- Name -->
+- **Loaded Datasets list:**
+  - File name + row count.
+  - Click expands a compact schema summary.
 
-**Purpose:** <!-- what the user does here -->
+- **Schema Summary block:**
+  - Plain-text column dump for quick triage when the main chat is focused on a different file.
 
-**Key elements:**
-- <!-- element 1 -->
-- <!-- element 2 -->
+- **Quick Actions:**
+  - Bookmark (saves the current question + active datasets).
+  - View Bookmarks (opens the bookmark list inline in the sidebar).
 
-**Actions available:**
-- <!-- action 1 -->
+- **Session Audit (collapsible):**
+  - Reverse-chronological list of queries this session with timestamp, question, source, and status (completed / failed / fallback).
+  - Read-only; opens the full audit endpoint for Phase 4 export.
 
-## Error States
+### Main Column
 
-<!-- FILL IN: How does the UI surface errors and loading states to the user? -->
+- **Top bar:** officer badge id input + source toggle (CSV / MS SQL) — MS SQL toggle is non-functional until Phase 3; visually labelled "(coming soon)" to avoid confusion.
 
-## Tech Stack
+- **Chat / Query Area:**
+  - Transcript-style list of turns. Each turn shows the officer's question on the right, the agent's answer on the left.
+  - Agent answer is split into:
+    - narrative headline (1-2 sentences),
+    - interactive table (`<table>` with client-side sorting; or Plotly-rendered via the same library),
+    - Plotly figure (inline; supports pan/zoom/drill-down),
+    - export buttons: CSV download of the rendered table, PNG of the chart.
+  - Loading states: step indicators ("Planning…" → "Running code…" → "Rendering…") matching the four substeps in `spec/agent.md`.
 
-<!-- FILL IN: Filled in by spec-writer. E.g., Next.js 15 + React 19 + Tailwind -->
+- **Generated Code Panel (collapsible):**
+  - Default collapsed on success, auto-expanded on self-fix or error.
+  - Code is syntax-highlighted in a `<textarea>` readonly by default, with an "Edit + Re-run" toggle.
+  - "Re-run" posts the edited code to `POST /api/v1/query/rerun` and replaces the result in-place without a new LLM call.
+  - "Copy" button copies code to clipboard.
+
+- **Suggestions:**
+  - Up to three clickable chips below each successful answer. Clicking a chip submits it as the next question.
+  - Generated by `suggested_followups` in state; in Phase 1 these are simple templates based on the last operation shape (groupby → suggest top-k; date column → suggest trend; filter → suggest breakdown by category).
+
+## Responsive Behaviour
+
+- Below 1 024 px: sidebar collapses behind a hamburger; table allows horizontal scroll; chart resizes to container.
+- Plotly chart listens to `window.resize` and calls `Plotly.Plots.resize()` to avoid stale sizing after layout changes.
+
+## Accessibility
+
+- Every control has a visible label.
+- Colour contrast ≥ 4.5:1 for normal text (WCAG AA).
+- Officer badge field validates non-empty on first submit; placeholder text is never used as the only identifier.
+
+## State in UI
+
+- Session id: generated server-side on first upload; returned in the `Set-Cookie` header; all subsequent calls carry it.
+- Bookmark and audit indicators use cached client state refreshed after each query to avoid duplicate fetches.

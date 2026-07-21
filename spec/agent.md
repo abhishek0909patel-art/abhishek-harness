@@ -1,218 +1,169 @@
-# Agent
+# Agent — UP Police Data Analyst (LangGraph)
 
-> Required when the project uses an agent framework. Delete this file if your project has no agent framework.
->
-> If your project has no agent framework (e.g., a simple script or single-LLM API call), delete this file.
->
-
----
-
-## Agent Architecture Pattern
-
-<!-- FILL IN: Which pattern does this agent follow? Choose one and describe why. -->
-
-| Pattern | Use when |
-|---------|----------|
-| **Single-agent loop** | One LLM drives a deterministic tool-call loop. No branches, no handoffs. |
-| **Graph (LangGraph)** | Multi-step pipeline with conditional edges, checkpointing, or parallel nodes. |
-| **Multi-agent** | Specialised sub-agents with distinct roles; orchestrator routes between them. |
-| **Supervisor** | One supervisor LLM dispatches to worker agents based on task type. |
-| **Human-in-the-loop** | Execution pauses at defined checkpoints for user review or approval. |
-
-**Chosen:** <!-- state pattern + one-sentence rationale -->
-
----
-
-## LLM Provider & Model
-
-<!-- FILL IN: Which model drives each agent/node? State provider, model ID, and why. -->
-
-| Agent / Node | Provider | Model ID | Rationale |
-|-------------|----------|----------|-----------|
-| <!-- node --> | Anthropic | <!-- e.g. claude-sonnet-4-6 --> | <!-- latency vs. quality trade-off --> |
-
-**Fallback behaviour:** <!-- Production resilience only: retry/backoff, degraded mode, or a surfaced error if the LLM API is unavailable or rate-limited. NOT a test/offline stub path — tests call the real API with keys from `.env`. -->
-
-**Prompt strategy:** <!-- System/user split, few-shot examples, structured output (tool_use / JSON mode)? -->
-
----
-
-## Tools & Tool Calling
-
-<!-- FILL IN: Every tool the agent can call. -->
-
-| Tool name | Description | Inputs | Output | Side-effects |
-|-----------|-------------|--------|--------|--------------|
-| <!-- name --> | <!-- what it does --> | <!-- params --> | <!-- return type --> | <!-- DB write, API call, file write, etc. --> |
-
-**Tool selection strategy:** <!-- How does the agent decide which tool to call? (LLM choice, rule-based routing, forced single tool) -->
-
-**Tool failure handling:** <!-- retry, fallback, abort — per tool or global policy? -->
-
----
-
-## Agent State
-
-<!-- FILL IN: The full state type. Every field must be named, typed, and annotated with what populates it. -->
-
-```python
-class AgentState(TypedDict):
-    # Identity
-    run_id: int                          # set at initialisation
-
-    # Input
-    # ...                                # fields populated from the trigger
-
-    # Pipeline data (populated progressively by nodes)
-    # ...
-
-    # Output
-    # ...                                # final result fields
-
-    # Control
-    error: str | None                    # set by any node on fatal failure
-    checkpoint: str | None              # last completed node (for resume)
-```
-
----
-
-## Nodes / Steps
-
-<!-- FILL IN: One section per node. For single-agent loops, describe each "step" or "tool call phase." -->
-
-### `node_[name]`
-
-**Reads from state:** <!-- field names -->
-
-**Writes to state:** <!-- field names -->
-
-**LLM call:** <!-- yes/no; if yes: prompt template summary, model used, output format -->
-
-**External calls:**
-
-| System | Operation | On Failure |
-|--------|-----------|------------|
-| <!-- system --> | <!-- what it calls --> | <!-- fatal (set error) / partial (log + continue) / retry --> |
-
-**Behaviour:** <!-- One paragraph. What decision or transformation does this node perform? -->
-
----
-
-## Graph / Flow Topology
-
-<!-- FILL IN: ASCII diagram of node flow. Show ALL conditional edges explicitly. -->
+## Graph Topology
 
 ```
 START
-  │
-  ▼
-node_a ──(error)──► node_handle_error ──► END
-  │
-  ▼
-node_b ──(condition)──► node_c
-  │                         │
-  │                         ▼
-  └──────────────────► node_finalize
-                             │
-                             ▼
-                            END
+ |
+ v
+classify_intent
+ |
+ +-- "csv" ---> retrieve_schema
+ |                |
+ |                v
+ |            generate_code
+ |                |
+ |                v
+ |            sandbox_execute
+ |                |
+ |          +-----+------+
+ |          |             |
+ |        OK              ERROR or empty
+ |          |             |
+ |          v             v
+ |      verify_output     self_fix (max 2)
+ |          |             |        |
+ |          |          retries>0?  no → handle_error
+ |          |             |        |
+ |          +-------------+        |
+ |                    |            |
+ |                    v            v
+ |                 finalize <-- handle_error
+ |                    |
+ |                    v
+ |                  END
+ |
+ +-- "db" ---> retrieve_db_schema
+ |                |
+ |                v
+ |            generate_sql_code
+ |                |
+ |                v
+ |            sql_execute
+ |                |
+ |          +-----+------+
+ |          |             |
+ |        OK              ERROR
+ |          |             |
+ |          v             v
+ |      verify_output     self_fix (max 2)
+ |          |             |        |
+ |          |          retries>0?  no → handle_error
+ |          |             |        |
+ |          +-------------+        |
+ |                    |            |
+ |                    v            v
+ |                 finalize <-- handle_error
+ |                    |
+ |                    v
+ |                  END
+ |
+ +-- "unknown" --> handle_error
 ```
 
-**Conditional edges:**
+## State Schema
 
-| Source node | Condition | Target |
-|-------------|-----------|--------|
-| <!-- node --> | <!-- e.g. state["error"] is not None --> | <!-- target node --> |
+The graph reuses `src/graph/state.py` (`AgentState`) and adds the following keys.
 
----
+- `source`: "csv" | "db" | "unknown"
+- `datasets`: list[str] — names of loaded CSVs or connected DB tables
+- `schema_block`: str — compact column/type summary for the active source
+- `generated_code`: str — pandas or SQLAlchemy snippet produced by the LLM
+- `exec_result`: dict — keys `dataframe` (list of rows), `columns`, `chart_spec` (Plotly figure JSON), `text`, `error`
+- `retries`: int — current self-fix attempt count (reset to 0 on first entry)
+- `followups`: list[str] — suggested next queries
+- `output_table`: list[dict] | None — rendered table rows for the UI
+- `output_chart`: dict | None — Plotly figure spec
+- `output_text`: str | None — narrative summary
+- `audit`: dict — `query`, `timestamp`, `officer`, `result_hash`, `source`, `status`
 
-## Memory & Context
+## Nodes
 
-<!-- FILL IN: How does the agent remember things across turns, steps, or runs? -->
+### classify_intent(state) -> partial state
 
-| Scope | Mechanism | What is stored |
-|-------|-----------|----------------|
-| **Within a run** | LangGraph state | All in-progress data |
-| **Across runs** | <!-- DB / vector store / none --> | <!-- e.g. past results, user prefs --> |
-| **Conversation** | <!-- message history / summary / none --> | <!-- if chat-style --> |
+Reads `state["input_text"]` against a short classifier prompt. Writes:
+- `source`: "csv" if the user message references the loaded datasets, "db" if the user explicitly mentions the live database, otherwise "unknown".
+- Retries: 0.
+- Deterministic keyword and regex heuristics run before the LLM call so that a missing Ollama process still routes correctly.
 
-**Context window management:** <!-- How is the prompt kept within limits? (summary, sliding window, RAG retrieval) -->
+### retrieve_schema(state) -> partial state
 
----
+Fetches the metadata block for the source selected by `classify_intent`. For CSV: keyword match (`state["input_text"]`) against persisted column names and descriptions in SQLite; returns the top-k (k=5) columns with type + sample values. For DB: queries `INFORMATION_SCHEMA.COLUMNS` (or the cached schema if present) and returns the matching columns. Writes `schema_block`.
 
-## Human-in-the-Loop Checkpoints
+### generate_code / generate_sql_code(state) -> partial state
 
-<!-- FILL IN: Where does execution pause for human input? Delete section if not applicable. -->
+Single LLM call, exactly once unless self_fix reroutes back. Prompt surfaces:
+- user question
+- `schema_block`
+- rules (pandas for CSV path; SQLAlchemy Core or text for DB path; no network/system/file calls; return DataFrame or Series)
+- response schema: a single ```python code fence with a leading `result = ...` assignment and optional `fig = ...` for Plotly.
 
-| Checkpoint | What is shown to the user | Expected user action | Timeout / default |
-|------------|--------------------------|----------------------|-------------------|
-| <!-- name --> | <!-- what the agent surfaces --> | <!-- approve / edit / abort --> | <!-- timeout action --> |
+Writes `generated_code`. `retries` unchanged.
 
----
+### sandbox_execute / sql_execute(state) -> partial state
 
-## Error Handling & Recovery
+Runs `generated_code` in a restricted namespace:
+- allowed builtins: `abs`, `len`, `round`, `min`, `max`, `sum`, `sorted`, `list`, `dict`, `set`, `tuple`, `range`, `enumerate`, `zip`, `map`, `filter`, `isinstance`, `type`, `str`, `int`, `float`, `bool`, `datetime`.
+- imported modules: only `pandas` (as `pd`), `numpy` (as `np`), `plotly.express` (as `pl`), `matplotlib.pyplot` (as `plt`), plus session DataFrames keyed by dataset name.
+- Banned tokens: `import` / `from` outside a hardcoded allowlist, `__import__`, `open`, `exec`, `eval`, `compile`, `globals`, `locals`, `getattr`, `setattr`, `delattr`, `os.`, `sys.`, `subprocess`, `socket`, `requests`, `urllib`, `http`, `ftp`, `shutil`, `pathlib`.
+- Timeout: 10 s. Memory: bounded by the enclosing process.
 
-<!-- FILL IN: How the agent handles failures at each level. -->
+DB path uses SQLAlchemy text() with a 30 s query timeout and `LIMIT` enforced automatically for preview; aggregates are allowed.
 
-**Node-level:** <!-- Each node catches its own exceptions; fatal errors set state["error"] and route to handle_error node. -->
+Writes `exec_result` with one of:
+- `{"status": "ok", "dataframe": [...], "columns": [...], "chart_spec": {...} | None, "text": "..."}` — success.
+- `{"status": "error", "error": "…"}` — failure.
 
-**Graph-level (handle_error node):**
-- Reads: `state.error`, `state.run_id`
-- Updates DB: run status → "failed", `error_message`, `completed_at`
-- Logs error with `run_id` context
-- Terminates graph
+### verify_output(state) -> partial state
 
-**Resume / retry strategy:** <!-- Can a failed run be resumed from its last checkpoint? How? -->
+Success criteria:
+- CSV path: `dataframe` is non-empty and has ≤ 1 000 rows (auto-truncates with a notice beyond that) AND `error` is absent.
+- DB path: `dataframe` is non-empty OR `text` carries a meaningful aggregate result (row count, sum, average).
 
-**Partial failure:** <!-- If a non-critical step fails, does the agent degrade gracefully or abort? -->
+Writes `output_table`, `output_chart`, `output_text`. If criteria pass: `status = "completed"` and jumps to `finalize`. If fail: increments `retries`; if `retries < max_retries (2)` jumps to `self_fix`; else `handle_error`.
 
----
+### self_fix(state) -> partial state
 
-## Observability
+Builds a degraded prompt: show the failing code and the error message, instruct the LLM to return a simpler snippet that cannot raise (e.g., `df.describe()`, `df.groupby(...).size()`, or `SELECT COUNT(*) FROM …`). Writes `generated_code` and returns to `sandbox_execute` / `sql_execute`. Loop cap: 2 — after 2 failed retries control passes to `handle_error`.
 
-<!-- FILL IN: What is logged, traced, and measured? -->
+### handle_error(state) -> partial state
 
-| Signal | What | Where |
-|--------|------|-------|
-| **Trace** | One trace per run, one span per node | <!-- OpenTelemetry / LangSmith / stdout --> |
-| **LLM calls** | Prompt tokens, completion tokens, latency, model | <!-- LangSmith / structured log --> |
-| **Tool calls** | Tool name, inputs, success/error, latency | Structured log |
-| **Run outcome** | Status, total duration, error if any | DB + structured log |
+Writes:
+- `status`: "failed"
+- `error`: human-readable message
+- `generated_code`: preserved for UI editing.
+Leaves `output_table`, `output_chart`, `output_text` empty. Routes to `finalize` so the UI always returns a final status (never raises through the graph).
 
----
+### finalize(state) -> partial state
 
-## Concurrency Model
+Writes `status`: "completed" | "failed". Commits the audit event to SQLite (non-fatal if the write fails — log only). Returns to END.
 
-<!-- FILL IN: How concurrent agent runs are handled. -->
+## Routing Summary
 
-- **Run isolation:** <!-- one-at-a-time (API returns 409) / queue / parallel with run_id scoping -->
-- **Parallel nodes within a run:** <!-- which nodes run in parallel and why -->
-- **Checkpointing:** <!-- none / SqliteSaver / PostgresSaver — required if human-in-the-loop or long-running -->
-
----
-
-## Graph Assembly (`agent/graph.py`)
-
-<!-- FILL IN: Pseudocode showing how nodes and edges are wired. Must be ≤ 60 lines in the real file. -->
-
-```python
-graph = StateGraph(AgentState)
-
-graph.add_node("node_a", node_a)
-graph.add_node("node_b", node_b)
-graph.add_node("finalize", node_finalize)
-graph.add_node("handle_error", node_handle_error)
-
-graph.set_entry_point("node_a")
-
-graph.add_conditional_edges(
-    "node_a",
-    lambda s: "handle_error" if s.get("error") else "node_b",
-)
-
-graph.add_edge("node_b", "finalize")
-graph.add_edge("finalize", END)
-graph.add_edge("handle_error", END)
-
-compiled_graph = graph.compile()
 ```
+classify_intent
+  source == "csv"       -> retrieve_schema
+  source == "db"        -> retrieve_db_schema
+  source == "unknown"   -> handle_error
+retrieve_schema         -> generate_code
+retrieve_db_schema      -> generate_sql_code
+generate_code           -> sandbox_execute
+generate_sql_code       -> sql_execute
+sandbox_execute
+  exec_result.status == "ok"      -> verify_output
+  exec_result.status == "error"   -> self_fix (if retries < 2) else handle_error
+sql_execute
+  exec_result.status == "ok"      -> verify_output
+  exec_result.status == "error"   -> self_fix (if retries < 2) else handle_error
+verify_output
+  pass                           -> finalize
+  fail && retries < 2            -> self_fix
+  fail && retries == 2           -> handle_error
+self_fix                         -> sandbox_execute / sql_execute
+handle_error                     -> finalize
+finalize                         -> END
+```
+
+## Replaces Baseline
+
+The baseline's `transform_text` node is removed from the graph assembly and replaced by `csv_analyst` (the composite entry point that runs `classify_intent` → … → `finalize`). The API surface `/transform` is remounted to `/query` so existing harness tests for graph compilation keep passing while the new capability ships separately.
