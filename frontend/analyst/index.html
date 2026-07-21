@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UP Police Data Analyst</title>
+  <link rel="stylesheet" href="/analyst/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>UP Police Data Analyst</h1>
+      <label class="badge-input">Officer ID <input id="officer" placeholder="Badge / Name" /></label>
+      <label class="source-toggle">
+        <input type="radio" name="src" value="csv" checked /> CSV
+        <input type="radio" name="src" value="db" disabled /> MS SQL (soon)
+      </label>
+    </header>
+    <aside class="sidebar">
+      <section class="upload">
+        <h2>Upload CSVs</h2>
+        <input id="files" type="file" accept=".csv" multiple />
+        <div id="upload-status"></div>
+        <ul id="dataset-list"></ul>
+      </section>
+      <section class="schema-summary">
+        <h2>Schema</h2>
+        <pre id="schema-text">No dataset loaded.</pre>
+      </section>
+      <section class="audit">
+        <h2>Session Audit</h2>
+        <ol id="audit-list"></ol>
+      </section>
+    </aside>
+    <main class="main">
+      <section class="chat" id="chat"></section>
+      <section class="suggestions" id="suggestions"></section>
+      <section class="code-panel">
+        <details>
+          <summary>Generated code (editable)</summary>
+          <textarea id="code" spellcheck="false" rows="10"></textarea>
+          <div class="code-actions">
+            <button id="rerun">Re-run</button>
+            <button id="copy">Copy</button>
+          </div>
+        </details>
+      </section>
+      <section class="results">
+        <div class="table-wrap"><table id="result-table"></table></div>
+        <div id="chart"></div>
+        <p id="result-text"></p>
+      </section>
+    </main>
+  </div>
+  <script src="/analyst/app.js"></script>
+</body>
+</html>

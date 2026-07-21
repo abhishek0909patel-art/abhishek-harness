@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "public"
+_ANALYST_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "analyst"
 
 
 @asynccontextmanager
@@ -28,9 +29,17 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(runs.router)
+    try:
+        from src.api import analyst
+
+        app.include_router(analyst.router, prefix="/api/v1")
+    except ImportError:
+        pass
 
     if _FRONTEND_DIR.is_dir():
         app.mount("/app", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
+    if _ANALYST_DIR.is_dir():
+        app.mount("/analyst", StaticFiles(directory=_ANALYST_DIR, html=True), name="analyst-frontend")
 
     return app
 
