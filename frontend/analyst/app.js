@@ -88,3 +88,14 @@ async function ask(question) {
 els.files.addEventListener('change', upload);
 els.rerun.addEventListener('click', () => { const c = els.code.value; if (c) ask(c); });
 els.copy.addEventListener('click', () => { els.code.select(); document.execCommand('copy'); });
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+if (chatForm && chatInput) {
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const question = chatInput.value.trim();
+    if (!question) return;
+    ask(question);
+    chatInput.value = '';
+  });
+}
