@@ -127,26 +127,28 @@ def list_datasets():
 
 @router.post("/analyst/query", response_model=QueryResponse)
 def query(payload: QueryRequest):
-    datasets = [d.filename for d in list_datasets()]
+    dataset_infos = list_datasets()
+    datasets = [
+        d.get("filename") if isinstance(d, dict) else d.filename
+        for d in dataset_infos
+    ]
     dataframes: dict[str, Any] = {}
-    for name in datasets:
+    for info in dataset_infos:
+        name = info.get("filename") if isinstance(info, dict) else info.filename
         try:
             import pandas as pd
 
-            path = _UPLOAD_ROOT / "*" / name
+            key = name.replace(".", "_").replace(" ", "_")
             matches = list(_UPLOAD_ROOT.glob(f"*/{name}"))
-            if not matches:
-                continue
-            dataframes[name.replace(".", "_").replace(" ", "_")] = pd.read_csv(
-                matches[0]
-            )
+            if matches:
+                dataframes[key] = pd.read_csv(matches[0])
         except Exception:  # noqa: BLE001
             continue
     state: AgentState = {
         "run_id": __import__("uuid").uuid4().hex,
         "input_text": payload.question,
         "instruction": payload.question,
-        "datasets": datasets,
+        "datasets": dataset_infos,
         "_dataframes": dataframes,
         "error": None,
     }
