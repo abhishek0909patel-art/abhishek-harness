@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: 8001
+      UP_ANALYST_UPLOAD_ROOT: /app/data/uploads
+    volumes:
+      - ./data:/app/data
+      - ./frontend:/app/frontend
+    restart: unless-stopped
+    command: ["python", "-m", "src"]

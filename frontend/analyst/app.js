@@ -16,10 +16,16 @@ const els = {
   officer: $('#officer'),
 };
 
+function setRoleDisplay() {
+ const roleDisplay = document.getElementById('role-display');
+ const officer = (document.getElementById('officer')?.value || '').trim();
+ const roleText = officer ? `Role: Officer (${officer})` : 'Role: Not set';
+ if (roleDisplay) roleDisplay.textContent = roleText;
+}
 function addAudit(entry) {
-  const li = document.createElement('li');
-  li.textContent = `${new Date(entry.timestamp).toLocaleTimeString()} — ${entry.query} — ${entry.status}`;
-  els.auditList.prepend(li);
+ const li = document.createElement('li');
+ li.textContent = `${new Date(entry.timestamp).toLocaleTimeString()} — ${entry.query} — ${entry.status}`;
+ els.auditList.prepend(li);
 }
 function addTurn(role, html) {
   const div = document.createElement('div');

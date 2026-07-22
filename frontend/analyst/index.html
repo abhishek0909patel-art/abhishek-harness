@@ -9,12 +9,15 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <h1>UP Police Data Analyst</h1>
+     <h1>UP Police Data Analyst</h1>
+     <div class="topbar-right">
       <label class="badge-input">Officer ID <input id="officer" placeholder="Badge / Name" /></label>
+      <span id="role-display" class="badge" title="Operator role">Role: Not set</span>
       <label class="source-toggle">
-        <input type="radio" name="src" value="csv" checked /> CSV
-        <input type="radio" name="src" value="db" disabled /> MS SQL (soon)
+       <input type="radio" name="src" value="csv" checked /> CSV
+       <input type="radio" name="src" value="db" disabled /> MS SQL (soon)
       </label>
+     </div>
     </header>
     <aside class="sidebar">
       <section class="upload">

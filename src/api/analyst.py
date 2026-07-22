@@ -95,34 +95,33 @@ def list_datasets():
         return []
     out: list[DatasetInfo] = []
     for session_dir in sorted(_UPLOAD_ROOT.iterdir()):
-        for csv in sorted(session_dir.glob("*.csv")):
-            try:
-                df_rows = 0
-                df_cols = 0
-                try:
-                    import pandas as pd
+     for csv in sorted(session_dir.glob("*.csv")):
+      df_rows = 0
+      df_cols = 0
+      parse_error = None
+      try:
+       import pandas as pd
 
-                    df = pd.read_csv(csv, nrows=1)
-                    df_cols = len(df.columns)
-                    with open(csv, "rb") as f:
-                        for _ in f:
-                            df_rows += 1
-                    df_rows -= 1  # header
-                except Exception:  # noqa: BLE001
-                    pass
-                out.append(
-                    DatasetInfo(
-                        id=len(out),
-                        filename=csv.name,
-                        row_count=max(df_rows, 0),
-                        column_count=df_cols,
-                        uploaded_at=__import__("datetime").datetime.datetime.fromtimestamp(
-                            csv.stat().st_mtime
-                        ).isoformat(),
-                    )
-                )
-            except Exception:  # noqa: BLE001
-                continue
+       df = pd.read_csv(csv, nrows=1)
+       df_cols = len(df.columns)
+       with open(csv, "rb") as f:
+        for _ in f:
+         df_rows += 1
+        df_rows -= 1  # header
+      except Exception as exc: # noqa: BLE001
+       parse_error = str(exc)
+      record = {
+       "id": len(out),
+       "filename": csv.name,
+       "row_count": max(df_rows, 0),
+       "column_count": df_cols,
+       "uploaded_at": __import__("datetime").datetime.fromtimestamp(
+         csv.stat().st_mtime
+       ).isoformat(),
+      }
+      if parse_error:
+       record["parse_error"] = parse_error
+      out.append(record)
     return out
 
 
