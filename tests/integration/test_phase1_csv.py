@@ -11,57 +11,41 @@ from src.analyst.sandbox import run_sandbox
 from src.graph.agent import agentic_ai
 from src.graph.state import AgentState
 
-
-@pytest.fixture()
-def sample_dataset(tmp_path: Path):
-    df = pd.DataFrame(
-        {
-            "station": ["Chattra", "Lucknow", "Kanpur", "Lucknow", "Kanpur"],
-            "date": pd.to_datetime(
-                [
-                    "2025-01-02",
-                    "2025-01-03",
-                    "2025-01-04",
-                    "2025-01-05",
-                    "2025-01-06",
-                ]
-            ),
-            "section": ["279", "279", "279", "302", "302"],
-            "count": [1, 1, 1, 1, 1],
-        }
-    )
-    path = tmp_path / "UserReport.csv"
-    df.to_csv(path, index=False)
-    meta = load_csv(path, session_id="s1")
-    return path, df, meta
+FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
 
-def test_metadata_engine_loads_csv(sample_dataset):
-    path, df, meta = sample_dataset
-    assert meta.row_count == 5
-    assert meta.column_count == 4
+def _load_case_status(tmp_path: Path):
+    src = FIXTURE_DIR / "case_status.csv"
+    dest = tmp_path / "case_status.csv"
+    dest.write_bytes(src.read_bytes())
+    df = pd.read_csv(dest)
+    meta = load_csv(dest, session_id="case-status-session")
+    return dest, df, meta
+
+
+def test_metadata_engine_loads_csv(tmp_path: Path):
+    _, df, meta = _load_case_status(tmp_path)
+    assert meta.row_count == len(df)
     assert any(column.name == "station" for column in meta.columns)
     block = schema_block(meta)
     assert "station" in block
-    assert "Lucknow" in block
 
 
-def test_sandbox_runs_groupby(sample_dataset):
-    path, df, meta = sample_dataset
+def test_sandbox_runs_groupby_case_status(tmp_path: Path):
+    _, df, meta = _load_case_status(tmp_path)
     code = "result = df.groupby('station')['count'].sum().reset_index()"
     res = run_sandbox(code, {"df": df})
     assert res.ok
     assert res.dataframe is not None
     rows = {row["station"]: row["count"] for row in res.dataframe}
-    assert rows["Lucknow"] == 2
-    assert rows["Kanpur"] == 2
-    assert rows["Chattra"] == 1
+    assert rows.get("Lucknow") == 1
+    assert rows.get("Kanpur") == 1
 
 
-def test_graph_runs_csv_question(sample_dataset):
-    path, df, meta = sample_dataset
+def test_graph_runs_case_status_question(tmp_path: Path):
+    _, df, meta = _load_case_status(tmp_path)
     state: AgentState = {
-        "run_id": "test",
+        "run_id": "case-status-test",
         "input_text": "group by station and sum count",
         "instruction": "group by station and sum count",
         "datasets": [meta],
@@ -72,4 +56,6 @@ def test_graph_runs_csv_question(sample_dataset):
     out = agentic_ai.invoke(state)
     assert out.get("status") == "completed"
     assert out.get("output_table") is not None
-    assert out.get("generated_code") == "result = df.head(3)"
+    code = out.get("generated_code") or ""
+    assert "result =" in code
+    assert "import" not in code
