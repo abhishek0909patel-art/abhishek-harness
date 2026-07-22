@@ -1,66 +1,98 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>UP Police Data Analyst</title>
-  <link rel="stylesheet" href="/analyst/styles.css" />
+ <meta charset="utf-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1" />
+ <title>UP Police Data Analyst</title>
+ <link rel="stylesheet" href="/analyst/styles.css" />
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-     <h1>UP Police Data Analyst</h1>
-     <div class="topbar-right">
-      <label class="badge-input">Officer ID <input id="officer" placeholder="Badge / Name" /></label>
-      <span id="role-display" class="badge" title="Operator role">Role: Not set</span>
-      <label class="source-toggle">
-       <input type="radio" name="src" value="csv" checked /> CSV
-       <input type="radio" name="src" value="db" disabled /> MS SQL (soon)
-      </label>
+ <div class="app">
+  <header class="topbar">
+   <div class="brand">
+    <span class="brand-icon">🛡️</span>
+    <h1>UP Police Data Analyst</h1>
+    <span class="badge badge-ok" id="status-badge" title="System status">Ready</span>
+   </div>
+   <div class="topbar-right">
+    <label class="badge-input">
+     <span class="label-text">Officer ID</span>
+     <input id="officer" placeholder="Badge / Name" />
+    </label>
+    <span id="role-display" class="badge" title="Operator role">Role: Not set</span>
+    <label class="source-toggle">
+     <input type="radio" name="src" value="csv" checked /> CSV
+     <input type="radio" name="src" value="db" disabled /> MS SQL (soon)
+    </label>
+   </div>
+  </header>
+
+  <aside class="sidebar">
+   <section class="card upload">
+    <h2><span class="card-icon">📂</span> Upload CSVs</h2>
+    <input id="files" type="file" accept=".csv" multiple />
+    <div id="upload-status" class="upload-status"></div>
+    <ul id="dataset-list" class="dataset-list"></ul>
+   </section>
+
+   <section class="card schema-summary">
+    <h2><span class="card-icon">🔍</span> Schema</h2>
+    <pre id="schema-text">No dataset loaded.</pre>
+   </section>
+
+   <section class="card audit">
+    <h2><span class="card-icon">📋</span> Session Audit</h2>
+    <div class="audit-wrap"><ol id="audit-list"></ol></div>
+   </section>
+  </aside>
+
+  <main class="main">
+   <section class="chat" id="chat" aria-live="polite"></section>
+
+   <section class="suggestions" id="suggestions" aria-label="Suggested follow-ups"></section>
+
+   <section class="results" id="results">
+    <div class="table-wrap"><table id="result-table"></table></div>
+    <div id="chart"></div>
+    <p id="result-text" class="result-text"></p>
+   </section>
+
+   <section class="code-panel">
+    <details>
+     <summary>Generated code (editable)</summary>
+     <div class="code-wrap">
+      <textarea id="code" spellcheck="false" rows="10"></textarea>
+      <div class="code-actions">
+       <button id="rerun" class="btn-secondary">Re-run</button>
+       <button id="copy" class="btn-secondary">Copy</button>
+      </div>
      </div>
-    </header>
-    <aside class="sidebar">
-      <section class="upload">
-        <h2>Upload CSVs</h2>
-        <input id="files" type="file" accept=".csv" multiple />
-        <div id="upload-status"></div>
-        <ul id="dataset-list"></ul>
-      </section>
-      <section class="schema-summary">
-        <h2>Schema</h2>
-        <pre id="schema-text">No dataset loaded.</pre>
-      </section>
-      <section class="audit">
-        <h2>Session Audit</h2>
-        <ol id="audit-list"></ol>
-      </section>
-    </aside>
-    <main class="main">
-      <section class="chat" id="chat"></section>
-      <section class="suggestions" id="suggestions"></section>
-      <section class="code-panel">
-        <details>
-          <summary>Generated code (editable)</summary>
-          <textarea id="code" spellcheck="false" rows="10"></textarea>
-          <div class="code-actions">
-            <button id="rerun">Re-run</button>
-            <button id="copy">Copy</button>
-          </div>
-        </details>
-      </section>
-      <section class="results">
-       <div class="table-wrap"><table id="result-table"></table></div>
-       <div id="chart"></div>
-       <p id="result-text"></p>
-      </section>
-      <section class="chat-input">
-       <form id="chat-form" class="chat-form">
-        <textarea id="chat-input" rows="3" placeholder="Type your question here..." autofocus></textarea>
-        <button type="submit" id="chat-submit">Send</button>
-       </form>
-      </section>
-    </main>
-  </div>
-  <script src="/analyst/app.js"></script>
+    </details>
+   </section>
+
+   <section class="chat-input-bar">
+    <form id="chat-form" class="chat-form" autocomplete="off">
+     <textarea id="chat-input" rows="2" placeholder="Ask anything about your data..." class="chat-input"></textarea>
+     <button type="submit" id="chat-submit" class="btn-primary">
+      <span class="btn-label">Send</span>
+      <span class="btn-icon">➤</span>
+     </button>
+    </form>
+   </section>
+  </main>
+ </div>
+
+ <div id="loading-overlay" class="loading-overlay hidden" aria-hidden="true">
+  <div class="spinner"></div>
+  <span class="loading-text">Running analysis…</span>
+ </div>
+
+ <div id="error-banner" class="error-banner hidden" role="alert">
+  <span class="error-icon">⚠️</span>
+  <span id="error-message" class="error-message"></span>
+  <button id="error-dismiss" class="error-dismiss" aria-label="Dismiss">✕</button>
+ </div>
+
+ <script src="/analyst/app.js"></script>
 </body>
 </html>
