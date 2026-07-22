@@ -14,7 +14,7 @@ class AgentState(TypedDict, total=False):
     status: str
     error: str | None
     # --- analyst additions ---
-    source: str | None  # "csv" | "db" | "unknown"
+    source: str | None # "csv" | "db" | "unknown"
     datasets: list[str] | None
     schema_block: str | None
     generated_code: str | None
@@ -25,3 +25,4 @@ class AgentState(TypedDict, total=False):
     output_chart: dict[str, Any] | None
     output_text: str | None
     audit: dict[str, Any] | None
+    _dataframes: dict[str, Any] | None

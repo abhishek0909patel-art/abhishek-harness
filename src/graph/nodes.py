@@ -55,6 +55,9 @@ def _first_dataset_meta(datasets: list[Any]) -> DatasetMeta:
 
 
 def generate_code(state: AgentState) -> AgentState:
+    existing = state.get("generated_code")
+    if existing:
+        return _sanitize_and_execute(state, existing)
     try:
         client = LLMClient()
         system = load_prompt("csv-analyst")

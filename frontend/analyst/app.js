@@ -42,7 +42,7 @@ function renderChart(spec) {
 }
 async function upload() {
   const fd = new FormData();
-  Array.from(els.files.files).forEach((f) => fd.append('files[]', f));
+  Array.from(els.files.files).forEach((f) => fd.append('files', f));
   els.uploadStatus.textContent = 'Uploading…';
   const res = await fetch('/api/v1/analyst/upload', { method: 'POST', body: fd });
   if (!res.ok) { els.uploadStatus.textContent = await res.text(); return; }
