@@ -92,29 +92,35 @@ def deterministic_local_code(state: AgentState) -> str:
  q = question
  if "describe" in q:
   return f"result = {df_name}.describe()"
- if "value_counts" in q or "count" in q:
+ if "value_counts" in q or "value count" in q:
   return f"result = {df_name}.value_counts().reset_index()"
- if "groupby" in q or "group by" in q or "per " in q or "by " in q:
+ if "count" in q or "frequency" in q or "how many" in q:
   return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
- if "head" in q or "sample" in q:
-  n = 20 if "all" not in q else 5000
-  return f"result = {df_name}.head({n})"
+ if "groupby" in q or "group by" in q or "per " in q or "by " in q or "by:" in q:
+  return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
+ if "sum" in q or "total" in q:
+  return f"result = {df_name}.groupby({df_name}.columns[0])[{df_name}.columns[-1]].sum().reset_index()"
  if "histogram" in q or "plot" in q or "chart" in q or "graph" in q or "visual" in q:
   col = f"{df_name}.columns[0]"
+  if len(getattr(df, "columns", [])) > 0:
+   col = f"{df_name}.columns[0]"
   return f"result = {df_name}.head(200)\nfig = pl.histogram({df_name}, x={col})"
- if "trend" in q or "time" in q or "over time" in q:
+ if "trend" in q or "over time" in q or "time series" in q:
   candidates = ["date", "time", "timestamp", "day", "month", "year"]
   cols = getattr(df, "columns", [])
   time_col = next((c for c in cols if any(k in str(c).lower() for k in candidates)), None)
   if time_col:
    return f"result = {df_name}.groupby('{time_col}').size().reset_index(name='count')"
   return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
- if "sum" in q or "total" in q:
-  return f"result = {df_name}.groupby({df_name}.columns[0])[{df_name}.columns[-1]].sum().reset_index()"
- if "districts.csv" in q or "district" in q or "list" in q or "show" in q or "display" in q:
-  n = 5000 if "all" in q else 20
+ if "all" in q or "list" in q or "show" in q or "display" in q or "full" in q or "complete" in q or "entire" in q:
+  return f"result = {df_name}"
+ if "sample" in q or "preview" in q or "glimpse" in q or "head" in q:
+  n = 20
+  m = "all" in q or "full" in q or "entire" in q
+  if m:
+   return f"result = {df_name}"
   return f"result = {df_name}.head({n})"
- return f"result = {df_name}.head(20)\nfig = pl.histogram({df_name}, x={df_name}.columns[0])"
+ return f"result = {df_name}"
 
 
 def _sanitize_and_execute(state: AgentState, code: str) -> AgentState:
