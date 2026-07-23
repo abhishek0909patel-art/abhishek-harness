@@ -115,24 +115,6 @@ html, body {
 }
 .chip:hover { border-color: var(--accent); background: #0b1220; }
 
-.code-panel {
- background: linear-gradient(180deg, rgba(17,24,39,0.85), rgba(15,23,42,0.85));
- padding: 10px;
- border-radius: var(--radius);
- border: 1px solid var(--border);
-}
-.code-panel textarea {
- width: 100%;
- font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, " Liberation Mono", monospace;
- background: #050b18;
- color: #a5f3fc;
- font-size: 12px;
- border: 1px solid #1f2937;
- border-radius: 10px;
- padding: 10px;
-}
-.code-actions { margin-top: 8px; display: flex; gap: 8px; }
-
 .results {
  background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(15,23,42,0.9));
  padding: 12px;

@@ -7,9 +7,6 @@ const els = {
  auditList: $('#audit-list'),
  chat: $('#chat'),
  suggestions: $('#suggestions'),
- code: $('#code'),
- rerun: $('#rerun'),
- copy: $('#copy'),
  resultTable: $('#result-table'),
  chart: $('#chart'),
  resultText: $('#result-text'),
@@ -136,7 +133,6 @@ async function ask(question) {
   renderTable(data.output_table, data.output_columns);
   renderChart(data.output_chart);
   els.resultText.textContent = data.output_text || '';
-  els.code.value = data.generated_code || '';
   if (data.followups?.length) {
    els.suggestions.innerHTML = data.followups.map((f) => `<button class="chip">${f}</button>`).join('');
    els.suggestions.querySelectorAll('.chip').forEach((btn) => {
@@ -153,15 +149,6 @@ async function ask(question) {
 }
 function wireEvents() {
  els.files?.addEventListener('change', upload);
- els.rerun?.addEventListener('click', () => {
-  const c = els.code?.value || '';
-  if (c) ask(c);
- });
- els.copy?.addEventListener('click', () => {
-  if (!els.code) return;
-  els.code.select();
-  document.execCommand('copy');
- });
  els.errorDismiss?.addEventListener('click', dismissError);
  els.officer?.addEventListener('input', setRoleDisplay);
  if (els.chatForm && els.chatInput) {
