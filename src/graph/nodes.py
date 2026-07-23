@@ -88,15 +88,8 @@ def generate_code(state: AgentState) -> AgentState:
   code = client.complete(system, user, max_tokens=2048)
   return _sanitize_and_execute(state, _extract_code(code))
  except LLMError as exc:
-  err_msg = str(exc)
-  if "No LLM API key configured" in err_msg:
-   state["error"] = (
-    "No LLM API key configured. Set exactly one of "
-    "AGENT_ANTHROPIC_API_KEY, AGENT_GEMINI_API_KEY, or "
-    "AGENT_OPENROUTER_API_KEY in .env (see .env.example)."
-   )
+  state["error"] = str(exc)
   return handle_error(state)
- return _sanitize_and_execute(state, heuristic_fallback(state))
 
 
 def _extract_code(text: str) -> str:
@@ -113,17 +106,19 @@ def _extract_code(text: str) -> str:
 
 def heuristic_fallback(state: AgentState) -> str:
  q = (state.get("instruction") or "").lower()
- dataset = (state.get("datasets") or [None])[0]
- df = "df" if dataset else "result"
+ dataframes: dict[str, Any] = state.get("_dataframes") or {}
+ keys = list(dataframes.keys())
+ df_name = keys[0] if keys else "result"
  if "describe" in q:
-  return f"result = {df}.describe()"
+  return f"result = {df_name}.describe()"
  if "value_counts" in q or "count" in q:
-  return f"result = {df}.value_counts().reset_index()"
+  return f"result = {df_name}.value_counts().reset_index()"
  if "groupby" in q or "per " in q or "by " in q:
-  return f"result = {df}.groupby({df}.columns[0]).size().reset_index(name='count')"
+  cols = ", ".join(getattr(dataframes.get(df_name), "columns", ["df.columns[0]"])) if df_name in dataframes else "df.columns[0]"
+  return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
  if "head" in q or "sample" in q:
-  return f"result = {df}.head(20)"
- return f"result = {df}.head(20)\nfig = pl.histogram({df}, x={df}.columns[0])"
+  return f"result = {df_name}.head(20)"
+ return f"result = {df_name}.head(20)\nfig = pl.histogram({df_name}, x={df_name}.columns[0])"
 
 
 def _sanitize_and_execute(state: AgentState, code: str) -> AgentState:
@@ -167,8 +162,9 @@ def self_fix(state: AgentState) -> AgentState:
   )
   code = client.complete(system, user, max_tokens=1024)
   code = _extract_code(code)
- except LLMError:
-  code = heuristic_fallback(state)
+ except LLMError as exc:
+  state["error"] = str(exc)
+  return handle_error(state)
  return _sanitize_and_execute(state, code)
 
 
