@@ -22,12 +22,12 @@ log = logging.getLogger(__name__)
 _MAX_RETRIES = 2
 
 
-def csv_analyst(state: AgentState) -> AgentState: # entry point for Phase 1
+def csv_analyst(state: AgentState) -> AgentState:  # entry point for Phase 1
  datasets = state.get("datasets") or []
  text = state.get("input_text") or state.get("instruction") or ""
  intent = classify_intent(
-  text,
-  [d.get("filename") if isinstance(d, dict) else d for d in datasets],
+ text,
+ [d.get("filename") if isinstance(d, dict) else d for d in datasets],
  )
  state["source"] = intent
  state["retries"] = 0
@@ -65,18 +65,19 @@ def _first_dataset_meta(datasets: list[Any]) -> DatasetMeta:
 
 
 def generate_code(state: AgentState) -> AgentState:
+ existing = state.get("generated_code")
+ if existing:
+  return _sanitize_and_execute(state, existing)
  from src.config.settings import get_settings
+
  s = get_settings()
- if s.resolve_provider() == "stub":
+ if s.resolve_provider() == "stub" and not state.get("_dataframes"):
   state["error"] = (
    "No LLM API key configured. Set exactly one of "
    "AGENT_ANTHROPIC_API_KEY, AGENT_GEMINI_API_KEY, or "
    "AGENT_OPENROUTER_API_KEY in .env (see .env.example)."
   )
   return handle_error(state)
- existing = state.get("generated_code")
- if existing:
-  return _sanitize_and_execute(state, existing)
  code = deterministic_local_code(state)
  return _sanitize_and_execute(state, code)
 
@@ -89,34 +90,91 @@ def deterministic_local_code(state: AgentState) -> str:
  df = dataframes.get(df_name)
  if df is None:
   return 'result = "no dataframe loaded"'
+
+ cols = getattr(df, "columns", []) or []
+ first = cols[0] if cols else None
+ last = cols[-1] if cols else None
+ numeric_cols = [c for c in cols if str(df[c].dtype).startswith(("int", "float"))]
+
  q = question
- if "describe" in q:
+ if any(k in q for k in ["describe", "summary", "overview"]):
   return f"result = {df_name}.describe()"
- if "value_counts" in q or "value count" in q:
-  return f"result = {df_name}.value_counts().reset_index()"
- if "count" in q or "frequency" in q or "how many" in q:
-  return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
- if "groupby" in q or "group by" in q or "per " in q or "by " in q or "by:" in q:
-  return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
- if "sum" in q or "total" in q:
-  return f"result = {df_name}.groupby({df_name}.columns[0])[{df_name}.columns[-1]].sum().reset_index()"
- if "histogram" in q or "plot" in q or "chart" in q or "graph" in q or "visual" in q:
-  col = f"{df_name}.columns[0]"
-  if len(getattr(df, "columns", [])) > 0:
-   col = f"{df_name}.columns[0]"
-  return f"result = {df_name}.head(200)\nfig = pl.histogram({df_name}, x={col})"
- if "trend" in q or "over time" in q or "time series" in q:
+ if any(k in q for k in ["missing", "null", "na", "empty", "blank"]):
+  return f"result = {df_name}.isna().sum().reset_index()\nresult.columns = ['column', 'missing_count']\nresult = result[result['missing_count'] > 0]"
+ if any(k in q for k in ["duplicate", "duplicat", "repeat", "doubl"]):
+  return f"result = {df_name}[{df_name}.duplicated(keep=False)]"
+ if any(k in q for k in ["correlation", "correlat", "relation", "matrix"]):
+  if len(numeric_cols) >= 2:
+   return f"result = {df_name}[{list(numeric_cols)}].corr()"
+  return f"result = {df_name}.corr(numeric_only=True)"
+ if any(k in q for k in ["unique", "distinct", "unik"]):
+  if first is not None:
+   return f"result = pd.DataFrame({{'{first}': {df_name}['{first}'].unique()}})"
+  return f"result = pd.DataFrame({{'unique_count': {df_name}.nunique().values}}, index={df_name}.nunique().index)"
+ if any(k in q for k in ["histogram", "hist", "distribution", "distribut"]):
+  if first is not None:
+   col = first
+   return f"result = {df_name}.head(500)\nfig = pl.histogram({df_name}, x='{col}', nbins=20)"
+ if any(k in q for k in ["plot", "chart", "graph", "visual", "bar", "line", "scatter"]):
+  x = first if first is not None else "index"
+  y = numeric_cols[0] if numeric_cols else None
+  if y:
+   return f"result = {df_name}.head(200)\nfig = pl.bar({df_name}, x='{x}', y='{y}')"
+  return f"result = {df_name}.head(200)\nfig = pl.histogram({df_name}, x='{x}', nbins=20)"
+ if any(k in q for k in ["trend", "time", "over time", "time series", "samay"]):
   candidates = ["date", "time", "timestamp", "day", "month", "year"]
-  cols = getattr(df, "columns", [])
   time_col = next((c for c in cols if any(k in str(c).lower() for k in candidates)), None)
+  if time_col and numeric_cols:
+   return f"result = {df_name}.groupby('{time_col}')[{numeric_cols[0]}].mean().reset_index()\nfig = pl.line(result, x='{time_col}', y='{numeric_cols[0]}')"
   if time_col:
    return f"result = {df_name}.groupby('{time_col}').size().reset_index(name='count')"
-  return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
- if "all rows" in q or "all data" in q or "all records" in q or ("show all" in q) or ("list all" in q) or ("show all" in q and ("row" in q or "data" in q or "record" in q)):
-  return f"result = {df_name}"
- if "sample" in q or "preview" in q or "glimpse" in q or ("head" in q and "all" not in q and "full" not in q):
+ if any(k in q for k in ["average", "avg", "mean", "median", "mode"]):
+  if numeric_cols:
+   return f"result = {df_name}[{numeric_cols}].mean().reset_index()"
+  return f"result = {df_name}.mean(numeric_only=True).reset_index()"
+ if any(k in q for k in ["sum", "total", "kul", "joda"]):
+  if first and last and str(df[last].dtype).startswith(("int", "float")):
+   return f"result = {df_name}.groupby('{first}')['{last}'].sum().reset_index()"
+  if last and str(df[last].dtype).startswith(("int", "float")):
+   return f"result = pd.DataFrame({{'{last}': [{df_name}['{last}'].sum()]}})"
+  if numeric_cols:
+   return f"result = {df_name}[{numeric_cols}].sum().reset_index()"
+  return f"result = {df_name}.sum(numeric_only=True).reset_index()"
+ if any(k in q for k in ["min", "minimum", "lowest", "sabse kam"]):
+  if numeric_cols:
+   return f"result = {df_name}[{numeric_cols}].min().reset_index()"
+  return f"result = {df_name}.min(numeric_only=True).reset_index()"
+ if any(k in q for k in ["max", "maximum", "highest", "sabse zyada"]):
+  if numeric_cols:
+   return f"result = {df_name}[{numeric_cols}].max().reset_index()"
+  return f"result = {df_name}.max(numeric_only=True).reset_index()"
+ if any(k in q for k in ["count", "how many", "frequency", "kitna", "kitne"]):
+  if len(cols) >= 2:
+   return f"result = {df_name}.groupby('{first}').size().reset_index(name='count')"
+  return f"result = pd.DataFrame({{'row_count': [len({df_name})]}})"
+ if any(k in q for k in ["top", "highest", "best", "sabse upar", "sabse zyada"]):
+  if numeric_cols and first:
+   return f"result = {df_name}.groupby('{first}')['{numeric_cols[0]}'].sum().reset_index().sort_values('{numeric_cols[0]}', ascending=False).head(20)"
+  if first:
+   return f"result = {df_name}.groupby('{first}').size().reset_index(name='count').sort_values('count', ascending=False).head(20)"
+ if any(k in q for k in ["bottom", "lowest", "worst", "sabse nich"]):
+  if numeric_cols and first:
+   return f"result = {df_name}.groupby('{first}')['{numeric_cols[0]}'].sum().reset_index().sort_values('{numeric_cols[0]}', ascending=True).head(20)"
+  if first:
+   return f"result = {df_name}.groupby('{first}').size().reset_index(name='count').sort_values('count', ascending=True).head(20)"
+ if any(k in q for k in ["percent", "ratio", "proportion", "pratishat", "hissa"]):
+  if len(cols) >= 2 and numeric_cols:
+   return f"result = {df_name}.groupby('{first}')['{numeric_cols[0]}'].sum().reset_index()\nresult['percentage'] = result['{numeric_cols[0]}'] / result['{numeric_cols[0]}'].sum() * 100"
+ if any(k in q for k in ["group", "by ", "ke hisab", "ke anusar", "category", "category-wise"]):
+  if len(cols) >= 2:
+   return f"result = {df_name}.groupby('{first}').size().reset_index(name='count')"
+ if any(k in q for k in ["value_counts", "value count", "values"]):
+  return f"result = {df_name}.value_counts().reset_index()"
+ if any(k in q for k in ["head", "sample", "preview", "glimpse", "top 5", "top 10"]):
   return f"result = {df_name}.head(20)"
- return f"result = {df_name}.head(20)"
+ if any(k in q for k in ["all", "full", "complete", "entire", "sab", "poora"]):
+  return f"result = {df_name}"
+ return f"result = {df_name}"
 
 
 def _sanitize_and_execute(state: AgentState, code: str) -> AgentState:
@@ -124,12 +182,12 @@ def _sanitize_and_execute(state: AgentState, code: str) -> AgentState:
  dataframes: dict[str, Any] = state.get("_dataframes") or {}
  sandbox: SandboxResult = run_sandbox(code, dataframes)
  state["exec_result"] = {
-  "status": "ok" if sandbox.ok else "error",
-  "dataframe": sandbox.dataframe,
-  "columns": sandbox.columns,
-  "chart_spec": sandbox.chart_spec,
-  "text": sandbox.text,
-  "error": sandbox.error,
+ "status": "ok" if sandbox.ok else "error",
+ "dataframe": sandbox.dataframe,
+ "columns": sandbox.columns,
+ "chart_spec": sandbox.chart_spec,
+ "text": sandbox.text,
+ "error": sandbox.error,
  }
  if sandbox.ok:
   state["output_table"] = sandbox.dataframe
@@ -160,13 +218,10 @@ def _suggest_followups(sandbox: SandboxResult) -> list[str]:
  out: list[str] = []
  if len(cols) >= 2:
   out.append(f"group by {cols[0]} and sum {cols[-1]}")
-  out.append(f"{cols[0]} ke hisab se {cols[-1]} jodo")
  if any(str(c).endswith(("date", "time", "timestamp")) for c in cols):
   out.append("trend over time")
-  out.append("samay ke saath trend dekho")
  out.append("show top 10 rows")
- out.append("sabse zyada 10 rows dikhao")
- return out[:4]
+ return out[:3]
 
 
 def handle_error(state: AgentState) -> AgentState:
@@ -174,12 +229,12 @@ def handle_error(state: AgentState) -> AgentState:
  state["error"] = err
  state["status"] = "failed"
  state["audit"] = {
-  "query": state.get("instruction"),
-  "timestamp": datetime.datetime.now().isoformat(),
-  "officer": state.get("run_id"),
-  "result_hash": "",
-  "source": state.get("source"),
-  "status": "failed",
+ "query": state.get("instruction"),
+ "timestamp": datetime.datetime.now().isoformat(),
+ "officer": state.get("run_id"),
+ "result_hash": "",
+ "source": state.get("source"),
+ "status": "failed",
  }
  return state
 
@@ -188,18 +243,18 @@ def finalize(state: AgentState) -> AgentState:
  state["status"] = "completed"
  state.setdefault("error", None)
  state["audit"] = state.get("audit") or {
-  "query": state.get("instruction"),
-  "timestamp": datetime.datetime.now().isoformat(),
-  "officer": state.get("run_id"),
-  "result_hash": "",
-  "source": state.get("source"),
-  "status": "completed",
+ "query": state.get("instruction"),
+ "timestamp": datetime.datetime.now().isoformat(),
+ "officer": state.get("run_id"),
+ "result_hash": "",
+ "source": state.get("source"),
+ "status": "completed",
  }
  return state
 
 
 # Baseline surface (kept for compatibility)
-def transform_text(state: AgentState) -> AgentState: # noqa: D401 — baseline
+def transform_text(state: AgentState) -> AgentState:  # noqa: D401 — baseline
  try:
   from src.llm.client import LLMClient, load_prompt
 
