@@ -160,10 +160,13 @@ def _suggest_followups(sandbox: SandboxResult) -> list[str]:
  out: list[str] = []
  if len(cols) >= 2:
   out.append(f"group by {cols[0]} and sum {cols[-1]}")
+  out.append(f"{cols[0]} ke hisab se {cols[-1]} jodo")
  if any(str(c).endswith(("date", "time", "timestamp")) for c in cols):
   out.append("trend over time")
+  out.append("samay ke saath trend dekho")
  out.append("show top 10 rows")
- return out[:3]
+ out.append("sabse zyada 10 rows dikhao")
+ return out[:4]
 
 
 def handle_error(state: AgentState) -> AgentState:
