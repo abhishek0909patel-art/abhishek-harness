@@ -39,3 +39,15 @@ class RunRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_now, onupdate=_now
     )
+
+
+class BookmarkRow(Base):
+    __tablename__ = "bookmarks"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    officer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )
+    shared: Mapped[bool] = mapped_column(default=False)
