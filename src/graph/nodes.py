@@ -112,15 +112,11 @@ def deterministic_local_code(state: AgentState) -> str:
   if time_col:
    return f"result = {df_name}.groupby('{time_col}').size().reset_index(name='count')"
   return f"result = {df_name}.groupby({df_name}.columns[0]).size().reset_index(name='count')"
- if "all" in q or "list" in q or "show" in q or "display" in q or "full" in q or "complete" in q or "entire" in q:
+ if "all rows" in q or "all data" in q or "all records" in q or ("show all" in q) or ("list all" in q) or ("show all" in q and ("row" in q or "data" in q or "record" in q)):
   return f"result = {df_name}"
- if "sample" in q or "preview" in q or "glimpse" in q or "head" in q:
-  n = 20
-  m = "all" in q or "full" in q or "entire" in q
-  if m:
-   return f"result = {df_name}"
-  return f"result = {df_name}.head({n})"
- return f"result = {df_name}"
+ if "sample" in q or "preview" in q or "glimpse" in q or ("head" in q and "all" not in q and "full" not in q):
+  return f"result = {df_name}.head(20)"
+ return f"result = {df_name}.head(20)"
 
 
 def _sanitize_and_execute(state: AgentState, code: str) -> AgentState:
