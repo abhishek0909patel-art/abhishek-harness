@@ -35,6 +35,12 @@ def create_app() -> FastAPI:
         app.include_router(analyst.router, prefix="/api/v1")
     except ImportError:
         pass
+    try:
+        from src.api import bookmarks
+
+        app.include_router(bookmarks.router, prefix="/api/v1")
+    except ImportError:
+        pass
 
     if _FRONTEND_DIR.is_dir():
         app.mount("/app", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
